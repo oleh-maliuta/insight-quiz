@@ -1,0 +1,35 @@
+from datetime import datetime, timezone
+from sqlalchemy import Column, DateTime, Integer,Boolean, String
+from sqlalchemy.orm import relationship
+from app.database.base import CA_Base
+from sqlalchemy.dialects.mysql import DATETIME
+import enum 
+class RoleEnum(str, enum.Enum):
+    STUDENT = "student"
+    TEACHER = "teacher"
+
+class User(CA_Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(255), unique=True, nullable=False)
+    password = Column(String(255), unique=False, nullable=False)
+    role = Column(String(50), default=RoleEnum.STUDENT.value, nullable=False)
+    created_at = Column(DateTime, default=datetime.now(timezone.utc))  # Date and time of creation
+    synchronized_at  = Column(DATETIME(fsp=6), default=datetime.now(timezone.utc))  # Date and time of creation first
+    is_email_verified = Column(Boolean, default=False)  
+
+    @property
+    def synchronized_at_iso(self) -> str | None:
+        """Returns synchronized_at in ISO 8601 format or None."""
+        return self.synchronized_at.isoformat() if self.synchronized_at else None
+    
+    # Helper method to convert User object to dictionary
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "email": self.email,
+        }
+    
+
+
