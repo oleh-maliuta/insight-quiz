@@ -4,11 +4,15 @@ from dotenv import load_dotenv
 load_dotenv()
 
 SERVER_URL = os.getenv("SERVER_URL")
+MONGO_DB_URL = os.getenv("MONGO_DB_URL")
+
 if os.getenv("TESTING") == "1":
     DATABASE_URL = os.getenv("TEST_DATABASE_URL")
+    MONGO_DB_NAME = os.getenv("MONGO_DB_NAME")
     UPLOAD_DIR = "uploads_tests"
 else:
     DATABASE_URL = os.getenv("DATABASE_URL")
+    MONGO_DB_NAME = os.getenv("TEST_MONGO_DB_NAME")
     UPLOAD_DIR = "uploads"
 
 

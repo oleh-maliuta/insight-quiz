@@ -4,6 +4,7 @@ uvicorn[standard]>=0.27.0
 
 python-dotenv>=1.0.0,<2.0.0
 pymysql
+pymongo
 cryptography
 
 pydantic>=2.7.0,<3.0.0
