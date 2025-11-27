@@ -18,6 +18,7 @@ engine = create_engine(DATABASE_URL, pool_size=10, max_overflow=20)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 # Import models
 from app.model.user import User
+from app.model.quiz import Quiz
 # Base class for creating tables
 from app.model import *
 
