@@ -1,10 +1,10 @@
 from datetime import datetime, timezone
 from sqlalchemy import Column, DateTime, Integer, String, ForeignKey
 from sqlalchemy.orm import relationship
-from app.database.base import CA_Base
+from app.database.base import IQ_Base
 from sqlalchemy.dialects.mysql import DATETIME
 
-class Quiz(CA_Base):
+class Quiz(IQ_Base):
     __tablename__ = "quizzes"
 
     id = Column(Integer, primary_key=True, index=True)

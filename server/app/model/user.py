@@ -1,14 +1,15 @@
 from datetime import datetime, timezone
 from sqlalchemy import Column, DateTime, Integer,Boolean, String
 from sqlalchemy.orm import relationship
-from app.database.base import CA_Base
+from app.database.base import IQ_Base
 from sqlalchemy.dialects.mysql import DATETIME
 import enum 
+
 class RoleEnum(str, enum.Enum):
     STUDENT = "student"
     TEACHER = "teacher"
 
-class User(CA_Base):
+class User(IQ_Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)

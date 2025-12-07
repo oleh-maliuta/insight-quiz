@@ -1,3 +1,3 @@
 from sqlalchemy.orm import declarative_base
 
-CA_Base = declarative_base()
+IQ_Base = declarative_base()

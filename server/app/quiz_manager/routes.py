@@ -1,4 +1,6 @@
 from fastapi import APIRouter
+import google.generativeai as genai
+from app.constants import GEMINI_API_KEY
 
 quiz_manager_router = APIRouter(tags=["Quizzes"])
 
@@ -8,6 +10,19 @@ quiz_manager_router = APIRouter(tags=["Quizzes"])
 )
 def post_quiz():
     pass
+
+@quiz_manager_router.post(
+    "/generate-quiz",
+    description="Generate a new quiz with AI."
+)
+def generate_quiz(theme, student_level ,number_of_answers, answer_type, number_of_questions = 1):
+    # gemini-2.5 model
+    genai.configure(api_key = GEMINI_API_KEY)
+    model_name = 'gemini-2.5-flash'
+    model = genai.GenerativeModel(model_name)
+    response = model.generate_content("Напиши '{}' питання на тему '{}', з {} варіантами відповіді типу '{}', для учнів {}.".
+                                      format(number_of_questions, theme, number_of_answers, answer_type, student_level))
+    return response.text
 
 @quiz_manager_router.post(
     "/take-quiz",

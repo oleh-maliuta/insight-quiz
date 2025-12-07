@@ -16,3 +16,5 @@ pyjwt>=2.8.0,<3.0.0
 fastapi_mail
 requests
 python-multipart>=0.0.9
+
+google-generativeai

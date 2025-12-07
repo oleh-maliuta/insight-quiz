@@ -6,7 +6,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from dotenv import load_dotenv
 import os
-from .base import CA_Base
+from .base import IQ_Base
 from app.constants import DATABASE_URL
 # Load environment variables from the .env file
 
@@ -30,13 +30,13 @@ existing_tables = inspector.get_table_names()
 print("🚀Existing tables in the database:")
 for table in existing_tables:
     print(f"- {table}")
-print("✅ Registered tables:", CA_Base.metadata.tables.keys())
+print("✅ Registered tables:", IQ_Base.metadata.tables.keys())
 
 # Create tables if they do not already exist
-CA_Base.metadata.create_all(bind=engine)
+IQ_Base.metadata.create_all(bind=engine)
 
 # Check for new tables created by create_all
-new_tables = set(CA_Base.metadata.tables.keys()) - set(existing_tables)
+new_tables = set(IQ_Base.metadata.tables.keys()) - set(existing_tables)
 
 # Display newly created tables
 if new_tables:
