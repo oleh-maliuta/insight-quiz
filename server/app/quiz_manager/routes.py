@@ -1,8 +1,11 @@
 from fastapi import APIRouter
 import google.generativeai as genai
 from app.constants import GEMINI_API_KEY
+import json
 
 quiz_manager_router = APIRouter(tags=["Quizzes"])
+genai.configure(api_key=GEMINI_API_KEY)
+model_name = 'gemini-2.5-flash' # Gemini AI model
 
 @quiz_manager_router.post(
     "/post-quiz",
@@ -15,14 +18,64 @@ def post_quiz():
     "/generate-quiz",
     description="Generate a new quiz with AI."
 )
-def generate_quiz(theme, student_level ,number_of_answers, answer_type, number_of_questions = 1):
-    # gemini-2.5 model
-    genai.configure(api_key = GEMINI_API_KEY)
-    model_name = 'gemini-2.5-flash'
-    model = genai.GenerativeModel(model_name)
-    response = model.generate_content("Напиши '{}' питання на тему '{}', з {} варіантами відповіді типу '{}', для учнів {}.".
-                                      format(number_of_questions, theme, number_of_answers, answer_type, student_level))
-    return response.text
+def generate_quiz(theme: str, student_level: str, number_of_answers: int, answer_type: str, number_of_questions: int = 1) -> list:
+    """
+    Генерує квіз у форматі JSON.
+    """
+    
+    
+    # 1. Instruction for the AI model
+    system_instruction = """
+    Ти — професійний методист та генератор тестів. 
+    Твоє завдання — створювати високоякісні питання для квізів.
+    Відповідь повинна бути ВИКЛЮЧНО у форматі JSON.
+    """
+
+    # 2. Detailed user prompt
+    user_prompt = f"""
+    Створи список із {number_of_questions} питань на тему '{theme}'.
+    Рівень складності: для учнів {student_level}.
+    Кількість варіантів відповідей: {number_of_answers}.
+    Тип варіантів відповідей: {answer_type}.
+
+    Важливо:
+    1. Познач правильну відповідь.
+    2. Додай коротке пояснення, чому ця відповідь правильна (поле 'explanation').
+    3. JSON має виглядати так:
+    [
+        {{
+            "question": "Текст питання",
+            "options": ["Варіант 1", "Варіант 2", ...],
+            "correct_answer_index": 0,  // Індекс правильної відповіді в масиві options (0, 1, 2...)
+            "explanation": "Пояснення..."
+        }}
+    ]
+    Мова квізу: Українська (або відповідно до теми).
+    """
+
+    # 3. JSON output
+    generation_config = {
+        "response_mime_type": "application/json",
+    }
+
+    model = genai.GenerativeModel(
+        model_name=model_name,
+        system_instruction=system_instruction
+    )
+
+    try:
+        response = model.generate_content(
+            user_prompt,
+            generation_config=generation_config
+        )
+        
+        # 4. Parsing JSON
+        quiz_data = json.loads(response.text)
+        return quiz_data
+
+    except Exception as e:
+        print(f"Generation error: {e}")
+        return []
 
 @quiz_manager_router.post(
     "/take-quiz",
