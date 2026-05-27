@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 import jwt
-from sqlalchemy.orm import Session
+from pymongo.database import Database
 from app.database.database import get_db
 from app.model.user import RoleEnum, User
 from .user_controller import ALGORITHM, SECRET_KEY, create_user, authenticate_user, get_current_user, hash_password, is_user_verified, oauth2_scheme, send_password_reset_email, update_user_email, update_user_password
@@ -15,7 +15,7 @@ user_manager_router = APIRouter(tags=["Users"])
 
 @user_manager_router.post("/register", description="Create a new user in the system.")
 async def register(
-    db: Session = Depends(get_db),
+    db: Database = Depends(get_db),
     email: str = Form(...),
     password: str = Form(...),
     role: str = Form(...),
@@ -44,7 +44,7 @@ class TokenResponse(BaseModel):
 
 @user_manager_router.post("/token", response_model=TokenResponse, include_in_schema=False)
 def login_for_access_token(
-    db: Session = Depends(get_db),
+    db: Database = Depends(get_db),
     form_data: OAuth2PasswordRequestForm = Depends()
 ):
     email = form_data.username
@@ -64,7 +64,7 @@ def login_for_access_token(
 def login_with_email(
     email: str = Form(...),
     password: str = Form(...),
-    db: Session = Depends(get_db)
+    db: Database = Depends(get_db)
 ):
     result = authenticate_user(db, email, password)
 
@@ -77,7 +77,7 @@ def login_with_email(
 
 
 @user_manager_router.get("/verify_email", response_class=JSONResponse)
-async def verify_email(token: str, db: Session = Depends(get_db)):
+async def verify_email(token: str, db: Database = Depends(get_db)):
     try:
         # Декодуємо токен
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -93,29 +93,28 @@ async def verify_email(token: str, db: Session = Depends(get_db)):
             )
 
         # Перевіряємо, чи існує користувач з таким email
-        user = db.query(User).filter(User.email == email).first()
-        if not user:
+        user_doc = db.users.find_one({'email': email})
+        if not user_doc:
             return JSONResponse(
                 status_code=404,
                 content={
-                    "detail": "User not found",
-                    "data": None
+                    'detail': 'User not found',
+                    'data': None
                 }
             )
 
         # Перевіряємо, чи вже підтверджено email
-        if user.is_email_verified:
+        if user_doc.get('is_email_verified'):
             return JSONResponse(
                 status_code=200,
                 content={
-                    "detail": "Email already verified ✅",
-                    "data": None
+                    'detail': 'Email already verified ✅',
+                    'data': None
                 }
             )
 
         # Оновлюємо статус підтвердження email
-        user.is_email_verified = True
-        db.commit()
+        db.users.update_one({'email': email}, {'$set': {'is_email_verified': True}})
 
         # Повертаємо успішну відповідь
         return JSONResponse(
@@ -137,7 +136,7 @@ async def verify_email(token: str, db: Session = Depends(get_db)):
 
 
 @user_manager_router.get("/profile")
-def get_profile(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+def get_profile(token: str = Depends(oauth2_scheme), db: Database = Depends(get_db)):
     logging.debug("Received request for profile with token: %s",
                   token)  # Логування отриманого токена
 
@@ -162,7 +161,7 @@ def get_profile(token: str = Depends(oauth2_scheme), db: Session = Depends(get_d
         content={
             "detail": "User retrieved successfully",
             "data": {
-                "id": current_user.id,
+                "id": str(current_user.id),
                 "email": current_user.email
             },
                 "synchronized_at": current_user.synchronized_at_iso
@@ -171,7 +170,7 @@ def get_profile(token: str = Depends(oauth2_scheme), db: Session = Depends(get_d
 
 
 @user_manager_router.get("/is_activated")
-def is_user_activated(user_id: int, db: Session = Depends(get_db)):
+def is_user_activated(user_id: int, db: Database = Depends(get_db)):
     try:
         # Перевірка, чи користувач активований
         is_verified = is_user_verified(user_id, db)
@@ -193,7 +192,7 @@ async def forgot_password(
         email: str = Form(...),
         # Мова для повідомлення (за замовчуванням українська)
         locale: str = Query('en'),
-        db: Session = Depends(get_db)
+        db: Database = Depends(get_db)
 ):
     """
     **Initiates the password reset process for the user**
@@ -230,7 +229,7 @@ async def forgot_password(
 
 @user_manager_router.get("/change-password-form", summary="Gets the password change form for the currently authenticated user", response_class=HTMLResponse, include_in_schema=False)
 async def get_change_password_form_from_forgot_password(
-    db: Session = Depends(get_db),
+    db: Database = Depends(get_db),
     token: str = Query(),
     locale: Optional[str] = 'en'
 ):
@@ -357,7 +356,7 @@ async def get_change_password_form_from_forgot_password(
 
 @user_manager_router.put("/change-password-form", summary="Changes the password for the currently authenticated user", include_in_schema=False)
 async def change_password_form_from_forgot_password(
-    db: Session = Depends(get_db),
+    db: Database = Depends(get_db),
     token: str = Query(...),
     new_password: str = Form(...),
     confirm_password: str = Form(...),
@@ -383,17 +382,7 @@ async def change_password_form_from_forgot_password(
         logging.error(f"Unexpected error: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
-        # Пошук користувача за ID
-    user = db.query(User).filter(User.id == current_user.id).first()
-
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    # Оновлюємо пароль (можливо, потрібно зашифрувати пароль перед збереженням)
-    # Увага: тут потрібно зашифрувати пароль
-    user.password = hash_password(new_password)
-    db.commit()
-
+    db.users.update_one({'id': current_user.id}, {'$set': {'password': hash_password(new_password)}})
     return RedirectResponse(url="/change-password-success", status_code=303)
 
 
@@ -407,7 +396,7 @@ async def change_password_success(locale: Optional[str] = 'en'):
 
 @user_manager_router.put("/change-password", summary="Changes the password for the currently authenticated user")
 def change_password(
-    db: Session = Depends(get_db),
+    db: Database = Depends(get_db),
     token: str = Depends(oauth2_scheme),
     old_password: str = Form(...),
     new_password: str = Form(...)
@@ -442,7 +431,7 @@ def change_password(
 
 @user_manager_router.put("/change-email", summary="Changes the email for the currently authenticated user")
 async def change_email(
-        db: Session = Depends(get_db),
+        db: Database = Depends(get_db),
         token: str = Depends(oauth2_scheme),
         password: str = Form(...),
         new_email: str = Form(...),

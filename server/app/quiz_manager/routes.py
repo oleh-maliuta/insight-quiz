@@ -1,10 +1,11 @@
 from fastapi import APIRouter
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from app.constants import GEMINI_API_KEY
 import json
 
 quiz_manager_router = APIRouter(tags=["Quizzes"])
-genai.configure(api_key=GEMINI_API_KEY)
+client = genai.Client(api_key=GEMINI_API_KEY)
 model_name = 'gemini-2.5-flash' # Gemini AI model
 
 @quiz_manager_router.post(
@@ -22,7 +23,6 @@ def generate_quiz(theme: str, student_level: str, number_of_answers: int, answer
     """
     Генерує квіз у форматі JSON.
     """
-    
     
     # 1. Instruction for the AI model
     system_instruction = """
@@ -53,20 +53,14 @@ def generate_quiz(theme: str, student_level: str, number_of_answers: int, answer
     Мова квізу: Українська (або відповідно до теми).
     """
 
-    # 3. JSON output
-    generation_config = {
-        "response_mime_type": "application/json",
-    }
-
-    model = genai.GenerativeModel(
-        model_name=model_name,
-        system_instruction=system_instruction
-    )
-
     try:
-        response = model.generate_content(
-            user_prompt,
-            generation_config=generation_config
+        response = client.models.generate_content(
+            model=model_name,
+            contents=user_prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=system_instruction,
+                response_mime_type='application/json',
+            )
         )
         
         # 4. Parsing JSON

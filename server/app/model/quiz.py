@@ -1,24 +1,41 @@
-from datetime import datetime, timezone
-from sqlalchemy import Column, DateTime, Integer, String, ForeignKey
-from sqlalchemy.orm import relationship
-from app.database.base import IQ_Base
-from sqlalchemy.dialects.mysql import DATETIME
+from datetime import datetime
+from typing import Optional
 
-class Quiz(IQ_Base):
-    __tablename__ = "quizzes"
 
-    id = Column(Integer, primary_key=True, index=True)
-    owner_id = Column(Integer, ForeignKey('users.id'))
-    name = Column(String(100), unique=True, nullable=False)
-    created_at = Column(DateTime, default=datetime.now(timezone.utc))
-    updated_at  = Column(DateTime, default=datetime.now(timezone.utc))
-    
+class Quiz:
+    def __init__(self, document: dict):
+        self.doc = document or {}
+
+    @classmethod
+    def from_document(cls, document: dict):
+        return cls(document) if document else None
+
+    @property
+    def id(self) -> Optional[str]:
+        return self.doc.get('_id')
+
+    @property
+    def owner_id(self) -> Optional[str]:
+        return self.doc.get('owner_id')
+
+    @property
+    def name(self) -> Optional[str]:
+        return self.doc.get('name')
+
+    @property
+    def created_at(self) -> Optional[datetime]:
+        return self.doc.get('created_at')
+
+    @property
+    def updated_at(self) -> Optional[datetime]:
+        return self.doc.get('updated_at')
+
     def to_dict(self):
         return {
-            "id": self.id,
-            "owner_id": self.owner_id,
-            "name": self.name,
-            "created_at": self.created_at,
-            "updated_at": self.updated_at
+            'id': self.id,
+            'owner_id': self.owner_id,
+            'name': self.name,
+            'created_at': self.created_at,
+            'updated_at': self.updated_at,
         }
     

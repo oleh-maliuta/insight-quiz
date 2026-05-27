@@ -10,26 +10,8 @@ services:
     environment:
       - ENVIRONMENT=development
     depends_on:
-      mysql:
-        condition: service_healthy
       mongo:
         condition: service_healthy
-
-  mysql:
-    image: mysql:9.5
-    container_name: mysql-db
-    restart: unless-stopped
-    environment:
-      MYSQL_DATABASE: insight_quiz
-      MYSQL_ROOT_PASSWORD: password
-    ports:
-      - "3306:3306"
-    volumes:
-      - mysql-data:/var/lib/mysql
-    healthcheck:
-      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost"]
-      timeout: 20s
-      retries: 10
   
   mongo:
     image: mongo:8.2
@@ -51,5 +33,4 @@ services:
       start_period: 20s
 
 volumes:
-  mysql-data:
   mongodb_data:

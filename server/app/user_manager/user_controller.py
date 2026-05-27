@@ -7,13 +7,13 @@ import jwt
 import os
 import logging
 from datetime import datetime, timedelta, timezone
-from sqlalchemy.orm import Session
+from pymongo.database import Database
+from pymongo.errors import PyMongoError
 from fastapi import HTTPException
-from sqlalchemy.exc import SQLAlchemyError
 from fastapi.security import OAuth2PasswordBearer
 
 from app.user_manager.mail_controller import send_password_change_form, send_verification_link
-from app.model import *
+from app.model.user import RoleEnum, User
 from app.constants import *
 
 # Налаштування логування
@@ -49,7 +49,7 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 # Create a new user
-async def create_user(db: Session, email: str, password: str, role: RoleEnum, locale: str):
+async def create_user(db: Database, email: str, password: str, role: RoleEnum, locale: str):
     try:
         # email verification
         email_regex = r"(^[a-z0-9]+[\._]?[a-z0-9]+[@]\w+[.]\w{2,3}$)"
@@ -61,101 +61,95 @@ async def create_user(db: Session, email: str, password: str, role: RoleEnum, lo
                     "data": None
                 }
             )
-        user = db.query(User).filter(User.email == email).first()
-        if user:
+        existing_user = db.users.find_one({'email': email})
+        if existing_user:
             return JSONResponse(
                 status_code=400,
                 content={
-                    "detail": "Email is already taken",
-                    "data": None
-                }
+                    'detail': 'Email is already taken',
+                    'data': None,
+                },
             )
 
         hashed_password = hash_password(password)
-        user = User(
-            email=email,
-            password=hashed_password,
-            is_email_verified=False,
-            role=role.value
-        )
-
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-
-        # Token access creation
-        token = create_access_token(
-            {"sub": email}, expires_delta=timedelta(hours=24))
-
-        # Sending email verification link
+        now = datetime.now(timezone.utc)
+        user_doc = {
+            'email': email,
+            'password': hashed_password,
+            'role': role.value,
+            'created_at': now,
+            'synchronized_at': now,
+            'is_email_verified': False,
+        }
+        db.users.insert_one(user_doc)
+        token = create_access_token({'sub': email}, expires_delta=timedelta(hours=24))
         await send_verification_link(email, token, locale)
         return JSONResponse(
             status_code=201,
             content={
-                "detail": "Register successful. Please verify your email",
-                "data": {
-                    "access_token": token,
-                    "token_type": "bearer"
-                }
-            }
+                'detail': 'Register successful. Please verify your email',
+                'data': {
+                    'access_token': token,
+                    'token_type': 'bearer',
+                },
+            },
         )
 
-    except SQLAlchemyError as e:
-        db.rollback()
+    except PyMongoError as e:
+        logging.error('MongoDB error in create_user: %s', e)
         return JSONResponse(
             status_code=500,
             content={
-                "detail": "Database error",
-                "data": None
-            }
+                'detail': 'Database error',
+                'data': None,
+            },
         )
 
 
 # 🔹 Authenticate user and generate JWT token
-def authenticate_user(db: Session, email: str, password: str):
-    user = db.query(User).filter(User.email == email).first()
-    logging.debug(f"Retrieved user: {user}")
+def authenticate_user(db: Database, email: str, password: str):
+    user_doc = db.users.find_one({'email': email})
+    user = User.from_document(user_doc)
+    logging.debug(f'Retrieved user: {user_doc}')
 
-    # Check if user exists in DB
     if not user or not verify_password(password, user.password):
-        
-        if(not user):
-            logging.debug(f"No user found with email: {email}")
-        elif not verify_password(password, user.password): 
-            logging.debug(f"Authentication failed for user: {email}") 
+        if not user:
+            logging.debug(f'No user found with email: {email}')
+        elif not verify_password(password, user.password):
+            logging.debug(f'Authentication failed for user: {email}')
         return JSONResponse(
             status_code=404,
             content={
-                "detail": "User not found or incorrect password",
-                "data": None
-            }
+                'detail': 'User not found or incorrect password',
+                'data': None,
+            },
         )
-    
-    if user.is_email_verified == False:
+
+    if not user.is_email_verified:
         return JSONResponse(
             status_code=403,
             content={
-                "detail": "Email not verified",
-                "data": None
-            }
+                'detail': 'Email not verified',
+                'data': None,
+            },
         )
-    # Generate token for the user
+
     access_token = create_access_token(
-        data={"sub": str(user.email)},
-        expires_delta=timedelta(minutes=30)
+        data={'sub': str(user.email)},
+        expires_delta=timedelta(minutes=30),
     )
 
     return {
-        "detail": "Authentication successful",
-        "data": {
-            "access_token": access_token,
-            "token_type": "bearer"
-        }
+        'detail': 'Authentication successful',
+        'data': {
+            'access_token': access_token,
+            'token_type': 'bearer',
+        },
     }
 
 
-def get_current_user(token: str, db: Session):
-    logging.debug("Decoding token: %s", token)  # Логування токена
+def get_current_user(token: str, db: Database):
+    logging.debug('Decoding token: %s', token)
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_email: str = payload.get("sub")
@@ -175,18 +169,16 @@ def get_current_user(token: str, db: Session):
         logging.error("JWT decoding error: %s", str(e))
         return JSONResponse(status_code=401, content={"detail": "Could not validate credentials"})
 
-    user = db.query(User).filter(User.email == user_email).first()
-    if user is None:
-        # Логування, якщо користувач не знайдений
-        logging.debug("User with email %s not found in DB", user_email)
-        return JSONResponse(status_code=401, content={"detail": "User not found"})
-    # Логування знайденого користувача
-    logging.debug("User found in DB: %s", user.email)
-    return user  # Повертаємо користувача, якщо він знайдений
+    user_doc = db.users.find_one({'email': user_email})
+    if user_doc is None:
+        logging.debug('User with email %s not found in DB', user_email)
+        return JSONResponse(status_code=401, content={'detail': 'User not found'})
+    logging.debug('User found in DB: %s', user_email)
+    return User.from_document(user_doc)
 
 
-def get_current_user_id(token: str, db: Session):
-    logging.debug("Decoding token: %s", token)  # Логування токена
+def get_current_user_id(token: str, db: Database):
+    logging.debug('Decoding token: %s', token)
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_email: str = payload.get("sub")
@@ -201,19 +193,22 @@ def get_current_user_id(token: str, db: Session):
         raise HTTPException(
             status_code=401, detail="Could not validate credentials")
 
-    user = db.query(User).filter(User.email == user_email).first()
-    if user is None:
-        # Логування, якщо користувач не знайдений
-        logging.debug("User with email %s not found in DB", user_email)
-        raise HTTPException(status_code=401, detail="User not found")
-    # Логування знайденого користувача
-    logging.debug("User found in DB: %s", user.email)
-    return user.id
+    user_doc = db.users.find_one({'email': user_email})
+    if user_doc is None:
+        logging.debug('User with email %s not found in DB', user_email)
+        raise HTTPException(status_code=401, detail='User not found')
+    current_user = User.from_document(user_doc)
+    logging.debug('User found in DB: %s', current_user.email)
+    return current_user.id
 
-def update_synchronized_at(token: str, db: Session):
+def update_synchronized_at(token: str, db: Database):
     current_user = get_current_user(token, db)
-    current_user.synchronized_at = datetime.now(timezone.utc)
-    db.commit()
+    if isinstance(current_user, JSONResponse):
+        return current_user
+
+    now = datetime.now(timezone.utc)
+    db.users.update_one({'email': current_user.email}, {'$set': {'synchronized_at': now}})
+    current_user.synchronized_at = now
     return JSONResponse(
         status_code=200,
         content={
@@ -224,9 +219,12 @@ def update_synchronized_at(token: str, db: Session):
         }
     )
 
-def is_user_verified(user_id, db: Session) -> bool:
-    user = db.query(User).filter(User.id == user_id).first()
-    return user is not None and user.is_email_verified
+def is_user_verified(user_id, db: Database) -> bool:
+    try:
+        user_doc = db.users.find_one({'id': int(user_id)})
+    except (TypeError, ValueError):
+        user_doc = None
+    return bool(user_doc and user_doc.get('is_email_verified'))
 
 # Functions to update the user's password
 def create_password_reset_token(email: str, expires_delta: timedelta = timedelta(hours=1)) -> str:
@@ -241,22 +239,21 @@ def create_password_reset_token(email: str, expires_delta: timedelta = timedelta
     """
     to_encode = {"sub": email, "exp": datetime.utcnow() + expires_delta}
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-async def send_password_reset_email(db: Session, email: str, locale: Optional[str] = 'en'):
+async def send_password_reset_email(db: Database, email: str, locale: Optional[str] = 'en'):
     """
     Sends a password reset form to the user's email after verifying the password.
     
     - **Parameters**:
-        - `db`: Database session.
+        - `db`: Database connection.
         - `email`: User's email address.
         - `locale`: The language for the reset message ('ua' for Ukrainian, 'en' for English).
     - **Raises**:
         - HTTPException: If the email doesn't exist or the password is incorrect.
     """
-    # Перевірка, чи є користувач з вказаним email
-    user = db.query(User).filter(User.email == email).first()
+    user_doc = db.users.find_one({'email': email})
 
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+    if not user_doc:
+        raise HTTPException(status_code=404, detail='User not found')
 
 
     # Створення токену для скидання пароля
@@ -303,11 +300,11 @@ async def send_password_reset_email(db: Session, email: str, locale: Optional[st
 
     return {"detail": "Password reset email sent successfully."}
 
-def update_user_password(db: Session, user: User, old_password: str, new_password: str):
+def update_user_password(db: Database, user: User, old_password: str, new_password: str):
     """
     Updates the user's password after verifying the old password.
 
-    :param db: Database session
+    :param db: Database connection
     :param user: The current user (User object)
     :param old_password: The user's current password
     :param new_password: The new password for the user
@@ -315,53 +312,39 @@ def update_user_password(db: Session, user: User, old_password: str, new_passwor
     :return: A message confirming the successful password change
     """
     if not verify_password(old_password, user.password):
-        raise HTTPException(status_code=400, detail="Incorrect old password")
+        raise HTTPException(status_code=400, detail='Incorrect old password')
 
-    user.password = hash_password(new_password)
-    db.commit()
+    new_hashed_password = hash_password(new_password)
+    db.users.update_one({'id': user.id}, {'$set': {'password': new_hashed_password}})
+    user.password = new_hashed_password
 
-    return {"detail": "Password successfully updated", "data": ""}
+    return {'detail': 'Password successfully updated', 'data': ''}
 
 # Function to update the user's email
 
 
-async def update_user_email(db: Session, user: User, password: str, new_email: str, locale: str):
+async def update_user_email(db: Database, user: User, password: str, new_email: str, locale: str):
     """
     Updates the user's email after verifying the password.
     """
     if not verify_password(password, user.password):
-        raise HTTPException(status_code=400, detail="Incorrect password")
-    try:
-        # Перевірка формату email
-        email_regex = r"(^[a-z0-9]+[\._]?[a-z0-9]+[@]\w+[.]\w{2,3}$)"
-        if not re.match(email_regex, new_email):
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid email format"
-            )
+        raise HTTPException(status_code=400, detail='Incorrect password')
 
-        # Перевірка, чи email вже існує в базі
-        test_user = db.query(User).filter(User.email == new_email).first()
-        if test_user:
-            raise HTTPException(
-                status_code=400,
-                detail="Email is already taken"
-            )
-        logging.error(f"Updating email from { user.email} to  {new_email}")
-        # Створення токену доступу
-        token = create_access_token(
-            {"sub": new_email}, expires_delta=timedelta(hours=24))
+    email_regex = r'(^[a-z0-9]+[\._]?[a-z0-9]+[@]\w+[.]\w{2,3}$)'
+    if not re.match(email_regex, new_email):
+        raise HTTPException(status_code=400, detail='Invalid email format')
 
-    except SQLAlchemyError as e:
-        db.rollback()
-        raise HTTPException(
-            status_code=500,
-            detail="Database error"
-        )
-    user.email = new_email
-    user.is_email_verified = False
-    db.commit()
-    # Надсилання посилання для підтвердження електронної пошти
+    existing_user = db.users.find_one({'email': new_email})
+    if existing_user:
+        raise HTTPException(status_code=400, detail='Email is already taken')
+
+    token = create_access_token({'sub': new_email}, expires_delta=timedelta(hours=24))
+    update_result = db.users.update_one(
+        {'id': user.id},
+        {'$set': {'email': new_email, 'is_email_verified': False}},
+    )
+    if update_result.matched_count == 0:
+        raise HTTPException(status_code=404, detail='User not found')
+
     await send_verification_link(new_email, token, locale)
-
-    return {"detail": "Email successfully updated. Please verify new email", "data": ""}
+    return {'detail': 'Email successfully updated. Please verify new email', 'data': ''}
