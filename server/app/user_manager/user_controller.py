@@ -49,7 +49,7 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 # Create a new user
-async def create_user(db: Database, email: str, password: str, role: RoleEnum, locale: str):
+async def create_user(db: Database, first_name: str, last_name: str, email: str, password: str, role: RoleEnum, locale: str):
     try:
         # email verification
         email_regex = r"(^[a-z0-9]+[\._]?[a-z0-9]+[@]\w+[.]\w{2,3}$)"
@@ -74,8 +74,10 @@ async def create_user(db: Database, email: str, password: str, role: RoleEnum, l
         hashed_password = hash_password(password)
         now = datetime.now(timezone.utc)
         user_doc = {
+            'first_name': first_name,
+            'last_name': last_name,
             'email': email,
-            'password': hashed_password,
+            'password_hash': hashed_password,
             'role': role.value,
             'created_at': now,
             'synchronized_at': now,
@@ -112,10 +114,10 @@ def authenticate_user(db: Database, email: str, password: str):
     user = User.from_document(user_doc)
     logging.debug(f'Retrieved user: {user_doc}')
 
-    if not user or not verify_password(password, user.password):
+    if not user or not verify_password(password, user.password_hash):
         if not user:
             logging.debug(f'No user found with email: {email}')
-        elif not verify_password(password, user.password):
+        elif not verify_password(password, user.password_hash):
             logging.debug(f'Authentication failed for user: {email}')
         return JSONResponse(
             status_code=404,
@@ -311,12 +313,12 @@ def update_user_password(db: Database, user: User, old_password: str, new_passwo
     :raises HTTPException: If the old password is incorrect
     :return: A message confirming the successful password change
     """
-    if not verify_password(old_password, user.password):
+    if not verify_password(old_password, user.password_hash):
         raise HTTPException(status_code=400, detail='Incorrect old password')
 
     new_hashed_password = hash_password(new_password)
     db.users.update_one({'id': user.id}, {'$set': {'password': new_hashed_password}})
-    user.password = new_hashed_password
+    user.password_hash = new_hashed_password
 
     return {'detail': 'Password successfully updated', 'data': ''}
 
@@ -327,7 +329,7 @@ async def update_user_email(db: Database, user: User, password: str, new_email: 
     """
     Updates the user's email after verifying the password.
     """
-    if not verify_password(password, user.password):
+    if not verify_password(password, user.password_hash):
         raise HTTPException(status_code=400, detail='Incorrect password')
 
     email_regex = r'(^[a-z0-9]+[\._]?[a-z0-9]+[@]\w+[.]\w{2,3}$)'

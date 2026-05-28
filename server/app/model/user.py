@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List, Dict, Any
 import enum
 
 
@@ -22,50 +22,71 @@ class User:
         return self.doc.get('_id')
 
     @property
+    def first_name(self) -> Optional[str]:
+        return self.doc.get('first_name')
+
+    @property
+    def last_name(self) -> Optional[str]:
+        return self.doc.get('last_name')
+
+    @property
     def email(self) -> Optional[str]:
         return self.doc.get('email')
 
     @property
-    def password(self) -> Optional[str]:
-        return self.doc.get('password')
-
-    @password.setter
-    def password(self, value: str):
-        self.doc['password'] = value
+    def password_hash(self) -> Optional[str]:
+        return self.doc.get('password_hash')
 
     @property
     def role(self) -> Optional[str]:
         return self.doc.get('role')
 
     @property
-    def created_at(self) -> Optional[datetime]:
-        return self.doc.get('created_at')
+    def avatar(self) -> Optional[str]:
+        return self.doc.get('avatar')
 
+    @property
+    def subscription_status(self) -> Optional[str]:
+        return self.doc.get('subscription_status')
+
+    @property
+    def phone_number(self) -> Optional[str]:
+        return self.doc.get('phone_number')
+
+    @property
+    def about(self) -> Optional[str]:
+        return self.doc.get('about')
+
+    @property
+    def is_email_verified(self) -> Optional[bool]:
+        return self.doc.get('is_email_verified')
+
+    @property
+    def subscription_until(self) -> Optional[datetime]:
+        return self.doc.get('subscription_until')
+    
     @property
     def synchronized_at(self) -> Optional[datetime]:
         return self.doc.get('synchronized_at')
 
-    @synchronized_at.setter
-    def synchronized_at(self, value: datetime):
-        self.doc['synchronized_at'] = value
-
     @property
-    def is_email_verified(self) -> bool:
-        return bool(self.doc.get('is_email_verified'))
+    def created_at(self) -> Optional[datetime]:
+        return self.doc.get('created_at')
 
-    @is_email_verified.setter
-    def is_email_verified(self, value: bool):
-        self.doc['is_email_verified'] = bool(value)
-
-    @property
-    def synchronized_at_iso(self) -> Optional[str]:
-        return self.synchronized_at.isoformat() if self.synchronized_at else None
-
-    def to_dict(self):
+    def to_dict(self) -> dict:
         return {
             'id': self.id,
+            'first_name': self.first_name,
+            'last_name': self.last_name,
             'email': self.email,
+            'password_hash': self.password_hash,
+            'role': self.role,
+            'avatar': self.avatar,
+            'subscription_status': self.subscription_status,
+            'phone_number': self.phone_number,
+            'about': self.about,
+            'is_email_verified': self.is_email_verified,
+            'tokens': self.tokens,
+            'subscription_until': self.subscription_until,
+            'created_at': self.created_at,
         }
-    
-
-

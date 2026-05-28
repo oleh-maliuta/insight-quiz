@@ -1,6 +1,6 @@
 import logging
 from dotenv import load_dotenv
-from pymongo import MongoClient, ReturnDocument
+from pymongo import MongoClient
 from pymongo.errors import PyMongoError
 from app.constants import MONGO_DB_URL, MONGO_DB_NAME
 

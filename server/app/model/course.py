@@ -1,8 +1,8 @@
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Optional
 
 
-class Quiz:
+class Course:
     def __init__(self, document: dict):
         self.doc = document or {}
 
@@ -19,32 +19,12 @@ class Quiz:
         return self.doc.get('owner_id')
 
     @property
-    def course_id(self) -> Optional[str]:
-        return self.doc.get('course_id')
-
-    @property
     def name(self) -> Optional[str]:
         return self.doc.get('name')
 
     @property
     def about(self) -> Optional[str]:
         return self.doc.get('about')
-
-    @property
-    def attachments(self) -> Optional[List[str]]:
-        return self.doc.get('attachments')
-
-    @property
-    def attempts_allowed(self) -> Optional[int]:
-        return self.doc.get('attempts_allowed')
-
-    @property
-    def unavailable_at(self) -> Optional[datetime]:
-        return self.doc.get('unavailable_at')
-
-    @property
-    def user_permissions(self) -> Optional[List[Dict[str, Any]]]:
-        return self.doc.get('user_permissions')
 
     @property
     def created_at(self) -> Optional[datetime]:
@@ -58,14 +38,8 @@ class Quiz:
         return {
             'id': self.id,
             'owner_id': self.owner_id,
-            'course_id': self.course_id,
             'name': self.name,
             'about': self.about,
-            'attachments': self.attachments,
-            'attempts_allowed': self.attempts_allowed,
-            'unavailable_at': self.unavailable_at,
-            'user_permissions': self.user_permissions,
             'created_at': self.created_at,
             'updated_at': self.updated_at,
         }
-    

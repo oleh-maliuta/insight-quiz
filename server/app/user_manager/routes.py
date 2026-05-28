@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Optional
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -16,6 +16,8 @@ user_manager_router = APIRouter(tags=["Users"])
 @user_manager_router.post("/register", description="Create a new user in the system.")
 async def register(
     db: Database = Depends(get_db),
+    first_name: str = Form(...),
+    last_name: str = Form(...),
     email: str = Form(...),
     password: str = Form(...),
     role: str = Form(...),
@@ -28,7 +30,7 @@ async def register(
     except ValueError:
         # 
         raise HTTPException(status_code=400, detail="Invalid role")
-    response = await create_user(db, email, password, role_enum, locale)
+    response = await create_user(db, first_name, last_name, email, password, role_enum, locale)
     logging.debug(f"Retrieved response: {response}")
 
     return response
