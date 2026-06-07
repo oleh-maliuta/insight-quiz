@@ -3,6 +3,10 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "supersecretkey")
+ENCODE_ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
 SERVER_URL = os.getenv("SERVER_URL")
 MONGO_DB_URL = os.getenv("MONGO_DB_URL")
 

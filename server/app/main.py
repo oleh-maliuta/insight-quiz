@@ -1,11 +1,10 @@
-from contextlib import asynccontextmanager
 import os
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from app.user_manager.routes import user_manager_router
 from app.quiz_manager.routes import quiz_manager_router
-from app.database.database import client
+from app.services.database import client
 import logging
 from fastapi.middleware.cors import CORSMiddleware
 

@@ -1,13 +1,15 @@
 from typing import Optional
 from pydantic import BaseModel
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, Form, HTTPException, Query
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 import jwt
 from pymongo.database import Database
-from app.database.database import get_db
-from app.model.user import RoleEnum, User
-from .user_controller import ALGORITHM, SECRET_KEY, create_user, authenticate_user, get_current_user, hash_password, is_user_verified, oauth2_scheme, send_password_reset_email, update_user_email, update_user_password
+from app.services.database import get_db
+from app.model.user import RoleEnum
+from app.services.oauth import oauth2_scheme
+from .user_controller import create_user, authenticate_user, get_current_user, hash_password, is_user_verified, send_password_reset_email, update_user_email, update_user_password
+from app.constants import ENCODE_ALGORITHM, JWT_SECRET_KEY
 import logging
 
 user_manager_router = APIRouter(tags=["Users"])
@@ -82,7 +84,7 @@ def login_with_email(
 async def verify_email(token: str, db: Database = Depends(get_db)):
     try:
         # Декодуємо токен
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[ENCODE_ALGORITHM])
         email = payload.get("sub")
 
         if email is None:
