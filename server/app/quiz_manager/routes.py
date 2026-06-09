@@ -199,18 +199,135 @@ def finish_quiz():
     pass
 
 @quiz_manager_router.put(
-    "/edit-quiz",
+    "/edit-quiz/{quiz_id}",
     description="Edit the quiz and its cards."
 )
-def edit_quiz():
-    pass
+async def edit_quiz(
+    quiz_id: str,
+    quiz_data: QuizCreate,
+    token: str = Depends(oauth2_scheme),
+    db: Database = Depends(get_db),
+):
+    try:
+        user = get_current_user(token, db)
+        if isinstance(user, JSONResponse):
+            return user
+
+        try:
+            quiz_obj_id = ObjectId(quiz_id)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid quiz id.")
+
+        quiz = db.quizzes.find_one({"_id": quiz_obj_id})
+        if not quiz:
+            raise HTTPException(status_code=404, detail="Quiz does not exist.")
+
+        if quiz.get('owner_id') != user.id:
+            raise HTTPException(status_code=403, detail="User is not the owner of the quiz.")
+
+        if quiz_data.course_id is not None and quiz_data.course_id != quiz.get('course_id'):
+            try:
+                course_obj_id = ObjectId(quiz_data.course_id)
+            except Exception:
+                raise HTTPException(status_code=400, detail="Invalid course id.")
+
+            course = db.courses.find_one({"_id": course_obj_id})
+            if not course:
+                raise HTTPException(status_code=404, detail="Course does not exist.")
+
+            course_owner = course.get('owner_id')
+            if isinstance(course_owner, ObjectId):
+                if course_owner != user.id:
+                    raise HTTPException(status_code=403, detail="User is not the owner of the course.")
+            else:
+                if str(course_owner) != str(user.id):
+                    raise HTTPException(status_code=403, detail="User is not the owner of the course.")
+
+        current_time = datetime.now(timezone.utc)
+        
+        quiz_update = {
+            "name": quiz_data.name,
+            "about": quiz_data.about,
+            "attachments": quiz_data.attachments,
+            "attempts_allowed": quiz_data.attempts_allowed,
+            "course_id": quiz_data.course_id,
+            "updated_at": current_time,
+        }
+
+        db.quizzes.update_one({"_id": quiz_obj_id}, {"$set": quiz_update})
+        db.questions.delete_many({"quiz_id": quiz_obj_id})
+        
+        questions_to_insert = []
+        for q in quiz_data.questions:
+            question_document = {
+                "quiz_id": quiz_obj_id,
+                "type": q.type,
+                "title": q.title,
+                "content": q.content,
+                "attachments": q.attachments,
+                "answer": q.answer,
+                "created_at": current_time,
+                "updated_at": current_time,
+            }
+            questions_to_insert.append(question_document)
+            
+        if questions_to_insert:
+            db.questions.insert_many(questions_to_insert)
+
+        return JSONResponse(
+            status_code=200,
+            content={
+                'detail': 'Quiz updated successfully.',
+                'data': None,
+            },
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 @quiz_manager_router.delete(
-    "/delete-quiz",
+    "/delete-quiz/{quiz_id}",
     description="Delete the quiz."
 )
-def delete_quiz():
-    pass
+async def delete_quiz(
+    quiz_id: str,
+    token: str = Depends(oauth2_scheme),
+    db: Database = Depends(get_db),
+):
+    try:
+        user = get_current_user(token, db)
+        if isinstance(user, JSONResponse):
+            return user
+
+        try:
+            quiz_obj_id = ObjectId(quiz_id)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid quiz id.")
+
+        quiz = db.quizzes.find_one({"_id": quiz_obj_id})
+        if not quiz:
+            raise HTTPException(status_code=404, detail="Quiz does not exist.")
+
+        if quiz.get('owner_id') != user.id:
+            raise HTTPException(status_code=403, detail="User is not the owner of the quiz.")
+
+        db.questions.delete_many({"quiz_id": quiz_obj_id})
+        db.quizzes.delete_one({"_id": quiz_obj_id})
+
+        return JSONResponse(
+            status_code=200,
+            content={
+                'detail': 'Quiz deleted successfully.',
+                'data': None,
+            },
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 @quiz_manager_router.get(
     "/observe-quiz",
