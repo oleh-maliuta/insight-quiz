@@ -2,6 +2,7 @@ from fastapi import HTTPException
 from pymongo.database import Database
 from fastapi.responses import JSONResponse
 from bson import ObjectId
+import math
 from datetime import datetime, timezone
 
 from app.utils.db.auth import get_current_user
@@ -165,6 +166,131 @@ def finish_quiz_controller(payload, token: str, db: Database):
             }
         )
     
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")  
+
+def observe_quiz_controller(quiz_id: str, token: str, db: Database):
+    """
+    Function to observe a quiz with all its questions and answers.
+    Checks permissions and returns detailed quiz data for instructors or admins.
+    """
+    try:
+        user = get_current_user(token, db)
+        if isinstance(user, JSONResponse):
+            return user
+
+        try:
+            quiz_obj_id = ObjectId(quiz_id)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid quiz id.")
+
+        quiz = db.quizzes.find_one({"_id": quiz_obj_id})
+        if not quiz:
+            raise HTTPException(status_code=404, detail="Quiz does not exist.")
+
+        if quiz.get("owner_id") != user.id and user.role != "admin":
+            raise HTTPException(status_code=403, detail="You do not have permission to observe this quiz.")
+
+        questions_cursor = db.questions.find({"quiz_id": quiz_obj_id})
+        questions = []
+        for q in questions_cursor:
+            questions.append({
+                "id": str(q["_id"]),
+                "type": q.get("type"),
+                "title": q.get("title"),
+                "content": q.get("content"),
+                "attachments": q.get("attachments"),
+                "answer": q.get("answer"), 
+                "created_at": q.get("created_at").isoformat() if q.get("created_at") else None,
+                "updated_at": q.get("updated_at").isoformat() if q.get("updated_at") else None
+            })
+
+        quiz_metadata = {
+            "id": str(quiz["_id"]),
+            "name": quiz.get("name"),
+            "about": quiz.get("about"),
+            "attachments": quiz.get("attachments"),
+            "attempts_allowed": quiz.get("attempts_allowed"),
+            "course_id": str(quiz.get("course_id")) if quiz.get("course_id") else None,
+            "created_at": quiz.get("created_at").isoformat() if quiz.get("created_at") else None,
+            "updated_at": quiz.get("updated_at").isoformat() if quiz.get("updated_at") else None
+        }
+
+        return JSONResponse(
+            status_code=200,
+            content={
+                "detail": "Quiz loaded for observation.",
+                "data": {
+                    "quiz": quiz_metadata,
+                    "questions": questions,
+                    "total_questions": len(questions)
+                }
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
+def get_quiz_cards_controller(quiz_id: str, page: int, size: int, token: str, db: Database):
+    """
+    Function to get quiz cards (questions without answers) with pagination.
+    Checks permissions and returns sanitized quiz questions for taking the quiz.
+    """
+    try:
+        user = get_current_user(token, db)
+        if isinstance(user, JSONResponse):
+            return user
+
+        try:
+            quiz_obj_id = ObjectId(quiz_id)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid quiz id.")
+
+        quiz = db.quizzes.find_one({"_id": quiz_obj_id})
+        if not quiz:
+            raise HTTPException(status_code=404, detail="Quiz does not exist.")
+
+        skip = (page - 1) * size
+        total_questions = db.questions.count_documents({"quiz_id": quiz_obj_id})
+        questions_cursor = db.questions.find({"quiz_id": quiz_obj_id}).skip(skip).limit(size)
+        
+        sanitized_questions = []
+        for q in questions_cursor:
+            sanitized_questions.append({
+                "id": str(q["_id"]),
+                "type": q.get("type"),
+                "title": q.get("title"),
+                "content": q.get("content"),
+                "attachments": q.get("attachments")
+            })
+
+        quiz_metadata = {
+            "id": str(quiz["_id"]),
+            "name": quiz.get("name"),
+            "about": quiz.get("about")
+        }
+
+        return JSONResponse(
+            status_code=200,
+            content={
+                "detail": "Quiz cards loaded successfully.",
+                "data": {
+                    "quiz": quiz_metadata,
+                    "questions": sanitized_questions,
+                    "pagination": {
+                        "current_page": page,
+                        "page_size": size,
+                        "total_items": total_questions,
+                        "total_pages": math.ceil(total_questions / size) if size > 0 else 0
+                    }
+                }
+            }
+        )
+
     except HTTPException:
         raise
     except Exception as e:

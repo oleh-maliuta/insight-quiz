@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 from google import genai
 from google.genai import types
@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 import json
 
 from app.schemas.quiz import *
-from app.quiz_manager.quiz_controller import take_quiz_controller, finish_quiz_controller
+from app.quiz_manager.quiz_controller import take_quiz_controller, finish_quiz_controller, observe_quiz_controller, get_quiz_cards_controller
 from app.services.database import get_db
 from app.services.oauth import oauth2_scheme
 from app.services.ai import client, model_name
@@ -323,15 +323,26 @@ async def delete_quiz(
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 @quiz_manager_router.get(
-    "/observe-quiz",
-    description="Observe the quiz and its cards as the author."
+    "/observe-quiz/{quiz_id}",
+    description="Observe the full quiz and its cards as the author (includes correct answers)."
 )
-def observe_quiz():
-    pass
+async def observe_quiz(
+    quiz_id: str,
+    token: str = Depends(oauth2_scheme),
+    db: Database = Depends(get_db),
+):
+    return observe_quiz_controller(quiz_id=quiz_id, token=token, db=db)
+
 
 @quiz_manager_router.get(
-    "/get-quiz-cards",
-    description="Loads the quiz cards by pages."
+    "/get-quiz-cards/{quiz_id}",
+    description="Loads the quiz cards by pages for studying or previewing (sanitized)."
 )
-def get_quiz_cards():
-    pass
+async def get_quiz_cards(
+    quiz_id: str,
+    page: int = Query(1, ge=1, description="Page number"),
+    size: int = Query(10, ge=1, le=100, description="Number of cards per page"),
+    token: str = Depends(oauth2_scheme),
+    db: Database = Depends(get_db),
+):
+    return get_quiz_cards_controller(quiz_id=quiz_id, page=page, size=size, token=token, db=db)
