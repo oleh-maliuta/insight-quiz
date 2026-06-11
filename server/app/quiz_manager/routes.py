@@ -108,7 +108,9 @@ async def post_quiz(
             status_code=201,
             content={
                 'detail': 'Quiz created successfully.',
-                'data': None,
+                'data': {
+                    'quiz_id': str(inserted_quiz_id)
+                },
             },
         )
 
@@ -185,11 +187,96 @@ def generate_quiz(
 
 
 @quiz_manager_router.post(
-    "/take-quiz",
-    description="Start taking the quiz and get the access to the cards."
+    "/take-quiz/{quiz_id}",
+    description="Start taking the quiz, create an attempt record, and get access to the sanitized cards."
 )
-def take_quiz():
-    pass
+async def take_quiz(
+    quiz_id: str,
+    token: str = Depends(oauth2_scheme),
+    db: Database = Depends(get_db),
+):
+    try:
+        # 1. Авторизація користувача
+        user = get_current_user(token, db)
+        if isinstance(user, JSONResponse):
+            return user
+
+        # 2. Валідація ID квізу
+        try:
+            quiz_obj_id = ObjectId(quiz_id)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid quiz id.")
+
+        # 3. Пошук квізу в базі
+        quiz = db.quizzes.find_one({"_id": quiz_obj_id})
+        if not quiz:
+            raise HTTPException(status_code=404, detail="Quiz does not exist.")
+
+        # 4. Перевірка ліміту спроб (attempts_allowed)
+        attempts_allowed = quiz.get("attempts_allowed", 0)
+        if attempts_allowed > 0:
+            past_attempts = db.quiz_attempts.count_documents({
+                "quiz_id": quiz_obj_id,
+                "user_id": user.id
+            })
+            if past_attempts >= attempts_allowed:
+                raise HTTPException(
+                    status_code=403, 
+                    detail=f"You have reached the maximum number of attempts ({attempts_allowed}) for this quiz."
+                )
+
+        # 5. Створення запису про нову спробу (Session)
+        current_time = datetime.now(timezone.utc)
+        attempt_doc = {
+            "quiz_id": quiz_obj_id,
+            "user_id": user.id,
+            "started_at": current_time,
+            "completed_at": None,
+            "status": "in_progress",
+            "answers": [] # Тут під час finish-quiz будемо зберігати відповіді юзера
+        }
+        attempt_result = db.quiz_attempts.insert_one(attempt_doc)
+
+        # 6. Отримання питань для цього квізу
+        questions_cursor = db.questions.find({"quiz_id": quiz_obj_id})
+        sanitized_questions = []
+
+        # 7. Санітизація: видаляємо правильні відповіді перед відправкою на фронтенд
+        for q in questions_cursor:
+            sanitized_q = {
+                "id": str(q["_id"]),
+                "type": q.get("type"),
+                "title": q.get("title"),
+                "content": q.get("content"),
+                "attachments": q.get("attachments")
+                # ВАЖЛИВО: поле "answer" навмисно не додається!
+            }
+            sanitized_questions.append(sanitized_q)
+
+        # 8. Формування успішної відповіді
+        quiz_metadata = {
+            "id": str(quiz["_id"]),
+            "name": quiz.get("name"),
+            "about": quiz.get("about"),
+            "attachments": quiz.get("attachments"),
+        }
+
+        return JSONResponse(
+            status_code=200,
+            content={
+                "detail": "Quiz started successfully.",
+                "data": {
+                    "attempt_id": str(attempt_result.inserted_id),
+                    "quiz": quiz_metadata,
+                    "questions": sanitized_questions
+                }
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 @quiz_manager_router.post(
     "/finish-quiz",
